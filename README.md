@@ -51,8 +51,15 @@ This code can be found in a different [repository](https://github.com/emsec/arm-
 
 If you use ARMORY or M-ulator in an academic context, please cite our paper using the reference below:
 ```latex
-@article {
-    todo
+@article{9206547,
+    author={M. {Hoffmann} and F. {Schellenberg} and C. {Paar}},
+    journal={IEEE Transactions on Information Forensics and Security},
+    title={ARMORY: Fully Automated and Exhaustive Fault Simulation on ARM-M Binaries},
+    year={2020},
+    volume={},
+    number={},
+    pages={1-1},
+    doi={10.1109/TIFS.2020.3027143}
 }
 ```
 
