@@ -1,6 +1,7 @@
 #pragma once
 
 #include "m-ulator/architectures.h"
+#include "m-ulator/callback_hook.h"
 #include "m-ulator/instruction_decoder.h"
 #include "m-ulator/memory_region.h"
 #include "m-ulator/registers.h"
@@ -13,7 +14,6 @@
 
 namespace mulator
 {
-
     struct CPU_State
     {
         u32 registers[REGISTER_COUNT];
@@ -148,7 +148,7 @@ namespace mulator
          * #####################################################################################
          * Hooks
          * #####################################################################################
-         * Every "add_XY_hook" function returns a unique identifier that can be used to remove a hook.
+         * Every "XY_hook.add" function returns a unique identifier that can be used to remove a hook.
          * This unique identifier is never 0.
          */
 
@@ -161,10 +161,7 @@ namespace mulator
          * instr_size - the size of the instruction which will be fetched
          * user_data - a pointer supplied while registering the hook
          */
-        using hook_on_fetch_ptr = void (*)(Emulator& emu, u32 address, u32 instr_size, void* user_data);
-        u32 add_before_fetch_hook(hook_on_fetch_ptr func, void* user_data = nullptr);
-        using hook_on_fetch_func = std::function<void(Emulator& emu, u32 address, u32 instr_size, void* user_data)>;
-        u32 add_before_fetch_hook(const hook_on_fetch_func& func, void* user_data = nullptr);
+        CallbackHook<Emulator&, u32, u32> before_fetch_hook;
 
         /*
          * Hooking either after an instruction has been decoded or after it has been executed.
@@ -174,12 +171,8 @@ namespace mulator
          * instruction - the decoded/executed instruction
          * user_data - a pointer supplied while registering the hook
          */
-        using hook_instruction_ptr = void (*)(Emulator& emu, const Instruction& instruction, void* user_data);
-        u32 add_instruction_decoded_hook(hook_instruction_ptr func, void* user_data = nullptr);
-        u32 add_instruction_executed_hook(hook_instruction_ptr func, void* user_data = nullptr);
-        using hook_instruction_func = std::function<void(Emulator& emu, const Instruction& instruction, void* user_data)>;
-        u32 add_instruction_decoded_hook(const hook_instruction_func& func, void* user_data = nullptr);
-        u32 add_instruction_executed_hook(const hook_instruction_func& func, void* user_data = nullptr);
+        CallbackHook<Emulator&, const Instruction&> instruction_decoded_hook;
+        CallbackHook<Emulator&, const Instruction&> instruction_executed_hook;
 
         /*
          * Hooking memory access.
@@ -191,16 +184,10 @@ namespace mulator
          * value - for the read hooks value holds the current content of the memory, for write hooks value holds the content to be written
          * user_data - a pointer supplied while registering the hook
          */
-        using hook_on_memory_access_ptr = void (*)(Emulator& emu, u32 address, u32 size, u32 value, void* user_data);
-        u32 add_memory_before_read_hook(hook_on_memory_access_ptr func, void* user_data = nullptr);
-        u32 add_memory_after_read_hook(hook_on_memory_access_ptr func, void* user_data = nullptr);
-        u32 add_memory_before_write_hook(hook_on_memory_access_ptr func, void* user_data = nullptr);
-        u32 add_memory_after_write_hook(hook_on_memory_access_ptr func, void* user_data = nullptr);
-        using hook_on_memory_access_func = std::function<void(Emulator& emu, u32 address, u32 size, u32 value, void* user_data)>;
-        u32 add_memory_before_read_hook(const hook_on_memory_access_func& func, void* user_data = nullptr);
-        u32 add_memory_after_read_hook(const hook_on_memory_access_func& func, void* user_data = nullptr);
-        u32 add_memory_before_write_hook(const hook_on_memory_access_func& func, void* user_data = nullptr);
-        u32 add_memory_after_write_hook(const hook_on_memory_access_func& func, void* user_data = nullptr);
+        CallbackHook<Emulator&, u32, u32, u32> before_memory_read_hook;
+        CallbackHook<Emulator&, u32, u32, u32> after_memory_read_hook;
+        CallbackHook<Emulator&, u32, u32, u32> before_memory_write_hook;
+        CallbackHook<Emulator&, u32, u32, u32> after_memory_write_hook;
 
         /*
          * Hooking register access.
@@ -211,21 +198,10 @@ namespace mulator
          * value - for the read hooks value holds the current content of the register, for write hooks value holds the content to be written
          * user_data - a pointer supplied while registering the hook
          */
-        using hook_on_register_access_ptr = void (*)(Emulator& emu, Register reg, u32 value, void* user_data);
-        u32 add_register_before_read_hook(hook_on_register_access_ptr func, void* user_data = nullptr);
-        u32 add_register_after_read_hook(hook_on_register_access_ptr func, void* user_data = nullptr);
-        u32 add_register_before_write_hook(hook_on_register_access_ptr func, void* user_data = nullptr);
-        u32 add_register_after_write_hook(hook_on_register_access_ptr func, void* user_data = nullptr);
-        using hook_on_register_access_func = std::function<void(Emulator& emu, Register reg, u32 value, void* user_data)>;
-        u32 add_register_before_read_hook(const hook_on_register_access_func& func, void* user_data = nullptr);
-        u32 add_register_after_read_hook(const hook_on_register_access_func& func, void* user_data = nullptr);
-        u32 add_register_before_write_hook(const hook_on_register_access_func& func, void* user_data = nullptr);
-        u32 add_register_after_write_hook(const hook_on_register_access_func& func, void* user_data = nullptr);
-
-        /*
-         * Remove a specific hook by its id.
-         */
-        void remove_hook(u32 id);
+        CallbackHook<Emulator&, Register, u32> before_register_read_hook;
+        CallbackHook<Emulator&, Register, u32> after_register_read_hook;
+        CallbackHook<Emulator&, Register, u32> before_register_write_hook;
+        CallbackHook<Emulator&, Register, u32> after_register_write_hook;
 
         /*
          * Remove all registered hooks.
@@ -235,33 +211,6 @@ namespace mulator
     private:
         InstructionDecoder m_decoder;
 
-        bool m_has_on_fetch_hooks;
-        bool m_has_on_decode_hooks;
-        bool m_has_on_execute_hooks;
-        bool m_has_before_memory_read_hooks;
-        bool m_has_after_memory_read_hooks;
-        bool m_has_before_memory_write_hooks;
-        bool m_has_after_memory_write_hooks;
-        bool m_has_before_register_read_hooks;
-        bool m_has_after_register_read_hooks;
-        bool m_has_before_register_write_hooks;
-        bool m_has_after_register_write_hooks;
-        std::vector<std::tuple<u32, hook_on_fetch_ptr, hook_on_fetch_func, void*>> m_on_fetch_hooks;
-        std::vector<std::tuple<u32, hook_instruction_ptr, hook_instruction_func, void*>> m_on_decode_hooks;
-        std::vector<std::tuple<u32, hook_instruction_ptr, hook_instruction_func, void*>> m_on_execute_hooks;
-        std::vector<std::tuple<u32, hook_on_memory_access_ptr, hook_on_memory_access_func, void*>> m_before_memory_read_hooks;
-        std::vector<std::tuple<u32, hook_on_memory_access_ptr, hook_on_memory_access_func, void*>> m_after_memory_read_hooks;
-        std::vector<std::tuple<u32, hook_on_memory_access_ptr, hook_on_memory_access_func, void*>> m_before_memory_write_hooks;
-        std::vector<std::tuple<u32, hook_on_memory_access_ptr, hook_on_memory_access_func, void*>> m_after_memory_write_hooks;
-        std::vector<std::tuple<u32, hook_on_register_access_ptr, hook_on_register_access_func, void*>> m_before_register_read_hooks;
-        std::vector<std::tuple<u32, hook_on_register_access_ptr, hook_on_register_access_func, void*>> m_after_register_read_hooks;
-        std::vector<std::tuple<u32, hook_on_register_access_ptr, hook_on_register_access_func, void*>> m_before_register_write_hooks;
-        std::vector<std::tuple<u32, hook_on_register_access_ptr, hook_on_register_access_func, void*>> m_after_register_write_hooks;
-
-        std::vector<u32> m_remove_hooks;
-        std::unordered_map<u32, u8> m_hook_id_type;
-        u32 m_next_hook_id;
-
         ReturnCode m_return_code;
 
         MemoryRegion m_flash;
@@ -270,10 +219,6 @@ namespace mulator
         CPU_State m_cpu_state;
         u32 m_emulated_time;
         bool m_psr_updated;
-
-        bool m_cleanup_requested;
-        void cleanup_hooks();
-        void cleanup_hook(u32 id);
 
         u8* validate_address(u32 address);
         void clock_cpu();
@@ -301,4 +246,4 @@ namespace mulator
         i32 get_execution_priority() const;
     };
 
-} // namespace mulator
+}    // namespace mulator

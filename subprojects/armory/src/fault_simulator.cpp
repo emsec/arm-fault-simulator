@@ -374,7 +374,7 @@ void FaultSimulator::simulate(const Emulator& main_emulator)
 
     std::tuple<FaultSimulator*, ThreadContext*> hook_user_data(this, &thread_ctx);
 
-    thread_ctx.emu.add_before_fetch_hook(&FaultSimulator::detect_end_of_execution, &hook_user_data);
+    thread_ctx.emu.before_fetch_hook.add(&FaultSimulator::detect_end_of_execution, &hook_user_data);
 
     for (u32 i = 0; i < m_fault_models.size(); ++i)
     {

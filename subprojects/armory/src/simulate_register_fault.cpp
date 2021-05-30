@@ -81,11 +81,11 @@ void FaultSimulator::simulate_register_fault(ThreadContext& thread_ctx, u32 recu
             thread_ctx.exploitability_model = m_ctx.exploitability_model->clone();
         }
         std::tuple<FaultSimulator*, std::vector<std::vector<Register>>*> hook_user_data(this, &read_registers);
-        auto hook1 = emu.add_instruction_executed_hook(&FaultSimulator::add_new_registers_vector, &hook_user_data);
-        auto hook2 = emu.add_register_before_read_hook(&collect_read_registers, &read_registers);
+        auto hook1 = emu.instruction_executed_hook.add(&FaultSimulator::add_new_registers_vector, &hook_user_data);
+        auto hook2 = emu.before_register_read_hook.add(&collect_read_registers, &read_registers);
         emu.emulate(remaining_cycles);
-        emu.remove_hook(hook1);
-        emu.remove_hook(hook2);
+        emu.instruction_executed_hook.remove(hook1);
+        emu.before_register_read_hook.remove(hook2);
     }
     read_registers.pop_back();
 
@@ -235,7 +235,7 @@ void FaultSimulator::simulate_register_fault(ThreadContext& thread_ctx, u32 recu
                 u32 recursive_hook = 0;
                 if (active_model->get_type() == RegisterFaultModel::FaultType::TRANSIENT)
                 {
-                    recursive_hook = emu.add_instruction_executed_hook(&revert_transient_fault, &fault);
+                    recursive_hook = emu.instruction_executed_hook.add(&revert_transient_fault, &fault);
                 }
 
                 thread_ctx.end_reached = false;
@@ -261,7 +261,7 @@ void FaultSimulator::simulate_register_fault(ThreadContext& thread_ctx, u32 recu
 
                 if (recursive_hook != 0)
                 {
-                    emu.remove_hook(recursive_hook);
+                    emu.instruction_executed_hook.remove(recursive_hook);
                     recursive_hook = 0;
                 }
             }
@@ -406,7 +406,7 @@ void FaultSimulator::simulate_permanent_register_fault(ThreadContext& thread_ctx
             emu.write_register(fault.reg, fault.manipulated_value);
 
             std::tuple<FaultSimulator*, RegisterFault*> hook_user_data(this, &fault);
-            auto recursive_hook = emu.add_register_after_write_hook(&FaultSimulator::handle_permanent_register_fault_overwrite, &hook_user_data);
+            auto recursive_hook = emu.after_register_write_hook.add(&FaultSimulator::handle_permanent_register_fault_overwrite, &hook_user_data);
 
             if (fault_model_index == m_fault_models.size() - 1)
             {
@@ -433,7 +433,7 @@ void FaultSimulator::simulate_permanent_register_fault(ThreadContext& thread_ctx
                 simulate_fault(thread_ctx, next_recursion_data, fault_model_index + 1, remaining_cycles, new_chain);
             }
 
-            emu.remove_hook(recursive_hook);
+            emu.after_register_write_hook.remove(recursive_hook);
         }
     }
 }

@@ -54,31 +54,31 @@ bool FaultTracer::verify(const Emulator& emulator, FaultCombination& faults)
 
     std::tuple<FaultTracer*, FaultCombination*> hook_user_data(this, &faults);
 
-    emu.add_before_fetch_hook(&FaultTracer::detect_end_of_execution, this);
+    emu.before_fetch_hook.add(&FaultTracer::detect_end_of_execution, this);
 
     if (!faults.instruction_faults.empty())
     {
-        emu.add_before_fetch_hook(&FaultTracer::handle_instruction_faults, (void*)&hook_user_data);
+        emu.before_fetch_hook.add(&FaultTracer::handle_instruction_faults, (void*)&hook_user_data);
     }
 
     if (!faults.register_faults.empty())
     {
-        emu.add_before_fetch_hook(&FaultTracer::handle_register_faults, (void*)&hook_user_data);
+        emu.before_fetch_hook.add(&FaultTracer::handle_register_faults, (void*)&hook_user_data);
     }
 
     for (const auto& f : faults.register_faults)
     {
         if (f.model->get_type() == RegisterFaultModel::FaultType::PERMANENT)
         {
-            emu.add_register_after_write_hook(&FaultTracer::handle_permanent_register_fault_overwrite, (void*)&hook_user_data);
+            emu.after_register_write_hook.add(&FaultTracer::handle_permanent_register_fault_overwrite, (void*)&hook_user_data);
             break;
         }
     }
 
-    emu.add_instruction_decoded_hook(&FaultTracer::log_instructions, this);
+    emu.instruction_decoded_hook.add(&FaultTracer::log_instructions, this);
     if (m_log_cpu_state)
     {
-        emu.add_instruction_executed_hook(&FaultTracer::log_cpu_state, this);
+        emu.instruction_executed_hook.add(&FaultTracer::log_cpu_state, this);
     }
 
     m_end_reached = false;

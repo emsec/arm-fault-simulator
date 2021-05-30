@@ -50,7 +50,7 @@ std::vector<std::tuple<u32, u32>> FaultSimulator::get_instruction_order(ThreadCo
 
     // strategy: just run the emulator from the current address and collect all executed instructions
     std::tuple<FaultSimulator*, std::vector<std::tuple<u32, u32>>*> hook_user_data(this, &addresses_to_fault);
-    u32 hook = thread_ctx.emu.add_instruction_decoded_hook(&FaultSimulator::instruction_collector, &hook_user_data);
+    u32 hook = thread_ctx.emu.instruction_decoded_hook.add(&FaultSimulator::instruction_collector, &hook_user_data);
 
     if (m_ctx.exploitability_model != nullptr)
     {
@@ -59,7 +59,7 @@ std::vector<std::tuple<u32, u32>> FaultSimulator::get_instruction_order(ThreadCo
 
     thread_ctx.emu.emulate(remaining_cycles);
 
-    thread_ctx.emu.remove_hook(hook);
+    thread_ctx.emu.instruction_decoded_hook.remove(hook);
 
     return addresses_to_fault;
 }

@@ -9,13 +9,13 @@ namespace armory
         m_ram_size = emu.get_ram_size();
         m_ram_data = new u8[m_ram_size];
         m_initialized = false;
-        m_hook = m_emulator.add_memory_after_write_hook(Snapshot::on_memory_write, this);
+        m_hook = m_emulator.after_memory_write_hook.add(Snapshot::on_memory_write, this);
         reset();
     }
 
     Snapshot::~Snapshot()
     {
-        m_emulator.remove_hook(m_hook);
+        m_emulator.after_memory_write_hook.remove(m_hook);
         delete[] m_ram_data;
     }
 

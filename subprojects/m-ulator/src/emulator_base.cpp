@@ -1,6 +1,5 @@
-#include "m-ulator/emulator.h"
-
 #include "m-ulator/arm_functions.h"
+#include "m-ulator/emulator.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -9,25 +8,12 @@ using namespace mulator;
 
 Emulator::Emulator(Architecture arch) : m_decoder(arch)
 {
-    m_next_hook_id = 1;
-    m_cleanup_requested = false;
-    m_emulated_time = 0;
-    m_cpu_state.time = 0;
-    m_return_code = ReturnCode::UNINITIALIZED;
+    m_emulated_time     = 0;
+    m_cpu_state.time    = 0;
+    m_return_code       = ReturnCode::UNINITIALIZED;
 
-    m_ram.bytes = nullptr;
+    m_ram.bytes   = nullptr;
     m_flash.bytes = nullptr;
-    m_has_on_fetch_hooks = false;
-    m_has_on_decode_hooks = false;
-    m_has_on_execute_hooks = false;
-    m_has_before_memory_read_hooks = false;
-    m_has_after_memory_read_hooks = false;
-    m_has_before_memory_write_hooks = false;
-    m_has_after_memory_write_hooks = false;
-    m_has_before_register_read_hooks = false;
-    m_has_after_register_read_hooks = false;
-    m_has_before_register_write_hooks = false;
-    m_has_after_register_write_hooks = false;
 
     std::memset(&m_cpu_state, 0, sizeof(m_cpu_state));
     m_cpu_state.registers[Register::LR] = 0xFFFFFFFF;
@@ -35,32 +21,29 @@ Emulator::Emulator(Architecture arch) : m_decoder(arch)
 
 Emulator::Emulator(const Emulator& other) : m_decoder(other.get_architecture())
 {
-    m_on_fetch_hooks = other.m_on_fetch_hooks;
-    m_on_decode_hooks = other.m_on_decode_hooks;
-    m_on_execute_hooks = other.m_on_execute_hooks;
-    m_before_memory_read_hooks = other.m_before_memory_read_hooks;
-    m_after_memory_read_hooks = other.m_after_memory_read_hooks;
-    m_before_memory_write_hooks = other.m_before_memory_write_hooks;
-    m_after_memory_write_hooks = other.m_after_memory_write_hooks;
-    m_before_register_read_hooks = other.m_before_register_read_hooks;
-    m_after_register_read_hooks = other.m_after_register_read_hooks;
-    m_before_register_write_hooks = other.m_before_register_write_hooks;
-    m_after_register_write_hooks = other.m_after_register_write_hooks;
-    m_next_hook_id = other.m_next_hook_id;
-    m_remove_hooks = other.m_remove_hooks;
-    m_hook_id_type = other.m_hook_id_type;
+    before_fetch_hook          = other.before_fetch_hook;
+    instruction_decoded_hook   = other.instruction_decoded_hook;
+    instruction_executed_hook  = other.instruction_executed_hook;
+    before_memory_read_hook    = other.before_memory_read_hook;
+    after_memory_read_hook     = other.after_memory_read_hook;
+    before_memory_write_hook   = other.before_memory_write_hook;
+    after_memory_write_hook    = other.after_memory_write_hook;
+    before_register_read_hook  = other.before_register_read_hook;
+    after_register_read_hook   = other.after_register_read_hook;
+    before_register_write_hook = other.before_register_write_hook;
+    after_register_write_hook  = other.after_register_write_hook;
 
     m_return_code = other.m_return_code;
 
-    m_flash = other.m_flash;
+    m_flash       = other.m_flash;
     m_flash.bytes = new u8[m_flash.size];
     std::memcpy(m_flash.bytes, other.m_flash.bytes, m_flash.size);
 
-    m_ram = other.m_ram;
+    m_ram       = other.m_ram;
     m_ram.bytes = new u8[m_ram.size];
     std::memcpy(m_ram.bytes, other.m_ram.bytes, m_ram.size);
 
-    m_cpu_state = other.m_cpu_state;
+    m_cpu_state     = other.m_cpu_state;
     m_emulated_time = other.m_emulated_time;
 }
 
@@ -87,11 +70,11 @@ void Emulator::set_flash_region(u32 offset, u32 size)
         delete[] m_flash.bytes;
     }
 
-    m_flash.offset = offset;
-    m_flash.size = size;
-    m_flash.bytes = new u8[size];
-    m_flash.access.read = true;
-    m_flash.access.write = false;
+    m_flash.offset         = offset;
+    m_flash.size           = size;
+    m_flash.bytes          = new u8[size];
+    m_flash.access.read    = true;
+    m_flash.access.write   = false;
     m_flash.access.execute = true;
     std::memset(m_flash.bytes, 0xFF, size);
 }
@@ -115,11 +98,11 @@ void Emulator::set_ram_region(u32 offset, u32 size)
         delete[] m_ram.bytes;
     }
 
-    m_ram.offset = offset;
-    m_ram.size = size;
-    m_ram.bytes = new u8[size];
-    m_ram.access.read = true;
-    m_ram.access.write = true;
+    m_ram.offset         = offset;
+    m_ram.size           = size;
+    m_ram.bytes          = new u8[size];
+    m_ram.access.read    = true;
+    m_ram.access.write   = true;
     m_ram.access.execute = false;
 
     std::memset(m_ram.bytes, 0x00, size);
@@ -137,387 +120,19 @@ u8* Emulator::get_ram() const
     return m_ram.bytes;
 }
 
-u32 Emulator::add_before_fetch_hook(hook_on_fetch_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_on_fetch_hooks.emplace_back(id, func, hook_on_fetch_func(), user_data);
-    m_hook_id_type[id] = 0;
-    m_has_on_fetch_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_instruction_decoded_hook(hook_instruction_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_on_decode_hooks.emplace_back(id, func, hook_instruction_func(), user_data);
-    m_hook_id_type[id] = 1;
-    m_has_on_decode_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_instruction_executed_hook(hook_instruction_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_on_execute_hooks.emplace_back(id, func, hook_instruction_func(), user_data);
-    m_hook_id_type[id] = 2;
-    m_has_on_execute_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_memory_before_read_hook(hook_on_memory_access_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_before_memory_read_hooks.emplace_back(id, func, hook_on_memory_access_func(), user_data);
-    m_hook_id_type[id] = 3;
-    m_has_before_memory_read_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_memory_after_read_hook(hook_on_memory_access_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_after_memory_read_hooks.emplace_back(id, func, hook_on_memory_access_func(), user_data);
-    m_hook_id_type[id] = 4;
-    m_has_after_memory_read_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_memory_before_write_hook(hook_on_memory_access_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_before_memory_write_hooks.emplace_back(id, func, hook_on_memory_access_func(), user_data);
-    m_hook_id_type[id] = 5;
-    m_has_before_memory_write_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_memory_after_write_hook(hook_on_memory_access_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_after_memory_write_hooks.emplace_back(id, func, hook_on_memory_access_func(), user_data);
-    m_hook_id_type[id] = 6;
-    m_has_after_memory_write_hooks = true;
-    return id;
-}
-u32 Emulator::add_register_before_read_hook(hook_on_register_access_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_before_register_read_hooks.emplace_back(id, func, hook_on_register_access_func(), user_data);
-    m_hook_id_type[id] = 7;
-    m_has_before_register_read_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_register_after_read_hook(hook_on_register_access_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_after_register_read_hooks.emplace_back(id, func, hook_on_register_access_func(), user_data);
-    m_hook_id_type[id] = 8;
-    m_has_after_register_read_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_register_before_write_hook(hook_on_register_access_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_before_register_write_hooks.emplace_back(id, func, hook_on_register_access_func(), user_data);
-    m_hook_id_type[id] = 9;
-    m_has_before_register_write_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_register_after_write_hook(hook_on_register_access_ptr func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_after_register_write_hooks.emplace_back(id, func, hook_on_register_access_func(), user_data);
-    m_hook_id_type[id] = 10;
-    m_has_after_register_write_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_before_fetch_hook(const hook_on_fetch_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_on_fetch_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 0;
-    m_has_on_fetch_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_instruction_decoded_hook(const hook_instruction_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_on_decode_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 1;
-    m_has_on_decode_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_instruction_executed_hook(const hook_instruction_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_on_execute_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 2;
-    m_has_on_execute_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_memory_before_read_hook(const hook_on_memory_access_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_before_memory_read_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 3;
-    m_has_before_memory_read_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_memory_after_read_hook(const hook_on_memory_access_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_after_memory_read_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 4;
-    m_has_after_memory_read_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_memory_before_write_hook(const hook_on_memory_access_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_before_memory_write_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 5;
-    m_has_before_memory_write_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_memory_after_write_hook(const hook_on_memory_access_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_after_memory_write_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 6;
-    m_has_after_memory_write_hooks = true;
-    return id;
-}
-u32 Emulator::add_register_before_read_hook(const hook_on_register_access_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_before_register_read_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 7;
-    m_has_before_register_read_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_register_after_read_hook(const hook_on_register_access_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_after_register_read_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 8;
-    m_has_after_register_read_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_register_before_write_hook(const hook_on_register_access_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_before_register_write_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 9;
-    m_has_before_register_write_hooks = true;
-    return id;
-}
-
-u32 Emulator::add_register_after_write_hook(const hook_on_register_access_func& func, void* user_data)
-{
-    auto id = m_next_hook_id++;
-    m_after_register_write_hooks.emplace_back(id, nullptr, func, user_data);
-    m_hook_id_type[id] = 10;
-    m_has_after_register_write_hooks = true;
-    return id;
-}
-
-void Emulator::remove_hook(u32 id)
-{
-    m_remove_hooks.push_back(id);
-    m_cleanup_requested = true;
-}
-
-void Emulator::cleanup_hooks()
-{
-    if (m_cleanup_requested)
-    {
-        for (u32 id : m_remove_hooks)
-        {
-            cleanup_hook(id);
-        }
-        m_remove_hooks.clear();
-        m_cleanup_requested = false;
-    }
-}
-
-void Emulator::cleanup_hook(u32 id)
-{
-    auto map_it = m_hook_id_type.find(id);
-    if (map_it != m_hook_id_type.end())
-    {
-        auto typ = map_it->second;
-        m_hook_id_type.erase(map_it);
-        if (typ == 0)
-        {
-            for (auto it = m_on_fetch_hooks.begin(); it != m_on_fetch_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_on_fetch_hooks.erase(it);
-                    m_has_on_fetch_hooks = !m_on_fetch_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 1)
-        {
-            for (auto it = m_on_decode_hooks.begin(); it != m_on_decode_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_on_decode_hooks.erase(it);
-                    m_has_on_decode_hooks = !m_on_decode_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 2)
-        {
-            for (auto it = m_on_execute_hooks.begin(); it != m_on_execute_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_on_execute_hooks.erase(it);
-                    m_has_on_execute_hooks = !m_on_execute_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 3)
-        {
-            for (auto it = m_before_memory_read_hooks.begin(); it != m_before_memory_read_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_before_memory_read_hooks.erase(it);
-                    m_has_before_memory_read_hooks = !m_before_memory_read_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 4)
-        {
-            for (auto it = m_after_memory_read_hooks.begin(); it != m_after_memory_read_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_after_memory_read_hooks.erase(it);
-                    m_has_after_memory_read_hooks = !m_after_memory_read_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 5)
-        {
-            for (auto it = m_before_memory_write_hooks.begin(); it != m_before_memory_write_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_before_memory_write_hooks.erase(it);
-                    m_has_before_memory_write_hooks = !m_before_memory_write_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 6)
-        {
-            for (auto it = m_after_memory_write_hooks.begin(); it != m_after_memory_write_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_after_memory_write_hooks.erase(it);
-                    m_has_after_memory_write_hooks = !m_after_memory_write_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 7)
-        {
-            for (auto it = m_before_register_read_hooks.begin(); it != m_before_register_read_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_before_register_read_hooks.erase(it);
-                    m_has_before_register_read_hooks = !m_before_register_read_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 8)
-        {
-            for (auto it = m_after_register_read_hooks.begin(); it != m_after_register_read_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_after_register_read_hooks.erase(it);
-                    m_has_after_register_read_hooks = !m_after_register_read_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 9)
-        {
-            for (auto it = m_before_register_write_hooks.begin(); it != m_before_register_write_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_before_register_write_hooks.erase(it);
-                    m_has_before_register_write_hooks = !m_before_register_write_hooks.empty();
-                    return;
-                }
-            }
-        }
-        else if (typ == 10)
-        {
-            for (auto it = m_after_register_write_hooks.begin(); it != m_after_register_write_hooks.end(); ++it)
-            {
-                if (std::get<0>(*it) == id)
-                {
-                    m_after_register_write_hooks.erase(it);
-                    m_has_after_register_write_hooks = !m_after_register_write_hooks.empty();
-                    return;
-                }
-            }
-        }
-    }
-}
 void Emulator::clear_hooks()
 {
-    m_on_fetch_hooks.clear();
-    m_on_decode_hooks.clear();
-    m_on_execute_hooks.clear();
-    m_before_memory_read_hooks.clear();
-    m_after_memory_read_hooks.clear();
-    m_before_memory_write_hooks.clear();
-    m_after_memory_write_hooks.clear();
-    m_before_register_read_hooks.clear();
-    m_after_register_read_hooks.clear();
-    m_before_register_write_hooks.clear();
-    m_after_register_write_hooks.clear();
-    m_has_on_fetch_hooks = false;
-    m_has_on_decode_hooks = false;
-    m_has_on_execute_hooks = false;
-    m_has_before_memory_read_hooks = false;
-    m_has_after_memory_read_hooks = false;
-    m_has_before_memory_write_hooks = false;
-    m_has_after_memory_write_hooks = false;
-    m_has_before_register_read_hooks = false;
-    m_has_after_register_read_hooks = false;
-    m_has_before_register_write_hooks = false;
-    m_has_after_register_write_hooks = false;
-    m_next_hook_id = 1;
+    before_fetch_hook.clear();
+    instruction_decoded_hook.clear();
+    instruction_executed_hook.clear();
+    before_memory_read_hook.clear();
+    after_memory_read_hook.clear();
+    before_memory_write_hook.clear();
+    after_memory_write_hook.clear();
+    before_register_read_hook.clear();
+    after_register_read_hook.clear();
+    before_register_write_hook.clear();
+    after_register_write_hook.clear();
 }
 
 u32 Emulator::read_register(Register reg) const
@@ -610,9 +225,7 @@ ReturnCode Emulator::emulate(u32 end_address, u64 max_instructions)
         return ReturnCode::UNINITIALIZED;
     }
 
-    cleanup_hooks();
-
-    m_return_code = ReturnCode::OK;
+    m_return_code   = ReturnCode::OK;
     m_emulated_time = 0;
 
     branch_write_PC(m_cpu_state.registers[PC]);
@@ -631,8 +244,6 @@ ReturnCode Emulator::emulate(u32 end_address, u64 max_instructions)
         }
         clock_cpu();
     }
-
-    cleanup_hooks();
 
     return m_return_code;
 }
@@ -716,32 +327,17 @@ void Emulator::clock_cpu()
 
     auto instr_size = m_decoder.get_instruction_size(memory);
 
-    if (m_has_on_fetch_hooks)
-    {
-        for (auto [id, func_ptr, func_std, ctx] : m_on_fetch_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, address, instr_size, ctx);
-            }
-            else
-            {
-                func_std(*this, address, instr_size, ctx);
-            }
-        }
-        cleanup_hooks();
-    }
+    before_fetch_hook.execute(*this, address, instr_size);
 
     if (m_return_code != ReturnCode::OK)
     {
         return;
     }
 
-    if (m_cpu_state.registers[PC] != address) // hook changed PC
+    if (m_cpu_state.registers[PC] != address)    // hook changed PC
     {
         address = read_register_internal(Register::PC) - 4;
-        memory = validate_address(address);
+        memory  = validate_address(address);
         if (m_return_code != ReturnCode::OK)
         {
             return;
@@ -759,22 +355,7 @@ void Emulator::clock_cpu()
         return;
     }
 
-    if (m_has_on_decode_hooks)
-    {
-        for (auto [id, func_ptr, func_std, ctx] : m_on_decode_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, instr, ctx);
-            }
-            else
-            {
-                func_std(*this, instr, ctx);
-            }
-        }
-        cleanup_hooks();
-    }
+    instruction_decoded_hook.execute(*this, instr);
 
     if (m_return_code != ReturnCode::OK)
     {
@@ -797,22 +378,7 @@ void Emulator::clock_cpu()
         write_register_internal(Register::PSR, value);
     }
 
-    if (m_has_on_execute_hooks)
-    {
-        for (auto [id, func_ptr, func_std, ctx] : m_on_execute_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, instr, ctx);
-            }
-            else
-            {
-                func_std(*this, instr, ctx);
-            }
-        }
-        cleanup_hooks();
-    }
+    instruction_executed_hook.execute(*this, instr);
 
     m_cpu_state.time++;
     m_emulated_time++;
@@ -833,7 +399,7 @@ u32 Emulator::read_register_internal(Register reg)
 
     u32 value;
 
-    if (m_has_before_register_read_hooks)
+    if (!before_register_read_hook.empty())
     {
         if (reg == PC)
         {
@@ -844,19 +410,7 @@ u32 Emulator::read_register_internal(Register reg)
             value = m_cpu_state.registers[reg];
         }
 
-        for (auto [id, func_ptr, func_std, ctx] : m_before_register_read_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, reg, value, ctx);
-            }
-            else
-            {
-                func_std(*this, reg, value, ctx);
-            }
-        }
-        cleanup_hooks();
+        before_register_read_hook.execute(*this, reg, value);
 
         if (m_return_code != ReturnCode::OK)
         {
@@ -873,22 +427,7 @@ u32 Emulator::read_register_internal(Register reg)
         value = m_cpu_state.registers[reg];
     }
 
-    if (m_has_after_register_read_hooks)
-    {
-        for (auto [id, func_ptr, func_std, ctx] : m_after_register_read_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, reg, value, ctx);
-            }
-            else
-            {
-                func_std(*this, reg, value, ctx);
-            }
-        }
-        cleanup_hooks();
-    }
+    after_register_read_hook.execute(*this, reg, value);
 
     return value;
 }
@@ -922,22 +461,7 @@ void Emulator::write_register_internal(Register reg, u32 value)
         }
     }
 
-    if (m_has_before_register_write_hooks)
-    {
-        for (auto [id, func_ptr, func_std, ctx] : m_before_register_write_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, reg, value, ctx);
-            }
-            else
-            {
-                func_std(*this, reg, value, ctx);
-            }
-        }
-        cleanup_hooks();
-    }
+    before_register_write_hook.execute(*this, reg, value);
 
     if (m_return_code != ReturnCode::OK)
     {
@@ -957,22 +481,7 @@ void Emulator::write_register_internal(Register reg, u32 value)
 
     m_cpu_state.registers[reg] = value;
 
-    if (m_has_after_register_write_hooks)
-    {
-        for (auto [id, func_ptr, func_std, ctx] : m_after_register_write_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, reg, value, ctx);
-            }
-            else
-            {
-                func_std(*this, reg, value, ctx);
-            }
-        }
-        cleanup_hooks();
-    }
+    after_register_write_hook.execute(*this, reg, value);
 }
 
 u32 Emulator::read_memory_internal(u32 address, u8 bytes)
@@ -1008,7 +517,7 @@ u32 Emulator::read_memory_internal(u32 address, u8 bytes)
     u8* memory = mem->get(address);
     u32 value;
 
-    if (m_has_before_memory_read_hooks)
+    if (!before_memory_read_hook.empty())
     {
         if (bytes == 1)
         {
@@ -1023,19 +532,7 @@ u32 Emulator::read_memory_internal(u32 address, u8 bytes)
             value = *((u32*)memory);
         }
 
-        for (auto [id, func_ptr, func_std, ctx] : m_before_memory_read_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, address, bytes, value, ctx);
-            }
-            else
-            {
-                func_std(*this, address, bytes, value, ctx);
-            }
-        }
-        cleanup_hooks();
+        before_memory_read_hook.execute(*this, address, bytes, value);
     }
 
     if (m_return_code != ReturnCode::OK)
@@ -1057,22 +554,7 @@ u32 Emulator::read_memory_internal(u32 address, u8 bytes)
         value = *((u32*)memory);
     }
 
-    if (m_has_after_memory_read_hooks)
-    {
-        for (auto [id, func_ptr, func_std, ctx] : m_after_memory_read_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, address, bytes, value, ctx);
-            }
-            else
-            {
-                func_std(*this, address, bytes, value, ctx);
-            }
-        }
-        cleanup_hooks();
-    }
+    after_memory_read_hook.execute(*this, address, bytes, value);
 
     return value;
 }
@@ -1118,22 +600,7 @@ void Emulator::write_memory_internal(u32 address, u32 value, u8 bytes)
         value = (u16)value;
     }
 
-    if (m_has_before_memory_write_hooks)
-    {
-        for (auto [id, func_ptr, func_std, ctx] : m_before_memory_write_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, address, bytes, value, ctx);
-            }
-            else
-            {
-                func_std(*this, address, bytes, value, ctx);
-            }
-        }
-        cleanup_hooks();
-    }
+    before_memory_write_hook.execute(*this, address, bytes, value);
 
     if (m_return_code != ReturnCode::OK)
     {
@@ -1153,20 +620,5 @@ void Emulator::write_memory_internal(u32 address, u32 value, u8 bytes)
         *((u32*)memory) = value;
     }
 
-    if (m_has_after_memory_write_hooks)
-    {
-        for (auto [id, func_ptr, func_std, ctx] : m_after_memory_write_hooks)
-        {
-            UNUSED(id);
-            if (func_ptr != nullptr)
-            {
-                func_ptr(*this, address, bytes, value, ctx);
-            }
-            else
-            {
-                func_std(*this, address, bytes, value, ctx);
-            }
-        }
-        cleanup_hooks();
-    }
+    after_memory_write_hook.execute(*this, address, bytes, value);
 }
